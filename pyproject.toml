@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "loom"
+version = "0.1.0"
+description = "Download, tag, and manage your music library — streamrip + beets in one place."
+authors = []
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "loom" }]
+
+[tool.poetry.scripts]
+loom = "loom.cli:loom"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+
+# ── local source packages ──────────────────────────────────────────────────
+streamrip = { path = "./streamrip", develop = true }
+beets     = { path = "./beets",     develop = true }
+
+# ── CLI / display helpers (pulled transitively but declared for clarity) ───
+click            = ">=8.1"
+click-help-colors = ">=0.9.2"
+rich             = ">=13.0"
+
+[build-system]
+requires      = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
