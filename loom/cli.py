@@ -1,4 +1,4 @@
-"""loom — unified CLI: download (streamrip) + library management (beets).
+"""loom — unified CLI: download + library management.
 
 Command map
 -----------
@@ -24,13 +24,13 @@ Library management (beets):
   loom fields                      — list available metadata fields
 
 Configuration:
-  loom config download …           — manage the download (streamrip) config
-  loom config library …            — manage the library (beets) config
+  loom config download …           — manage the download config
+  loom config library …            — manage the library config
 
 Global flags:
   -q / --quality   1,3             — download quality level(s)
   -f / --folder    ~/Music/        — override download folder
-  --auto-import                    — import the download folder into beets
+  --auto-import                    — import the download folder into the library
                                      after every download command finishes
 """
 from __future__ import annotations
@@ -55,8 +55,8 @@ from loom import __version__
 # ---------------------------------------------------------------------------
 
 def _get_console():
-    """Return streamrip's shared Rich console."""
-    from streamrip.console import console
+    """Return the shared Rich console."""
+    from loom.download.console import console
     return console
 
 
@@ -110,8 +110,8 @@ def _parse_quality(quality_str: str | None) -> list[int] | None:
 @click.option(
     "--config-path",
     default=None,
-    help="Path to the streamrip download config (TOML). Defaults to the "
-         "standard location (~/.config/streamrip/config.toml).",
+    help="Path to the download config (TOML). Defaults to the "
+         "standard location (~/.config/loom/config.toml).",
     type=click.Path(readable=True, writable=True),
 )
 @click.option(
@@ -203,7 +203,7 @@ def loom(
         datefmt="[%X]",
         handlers=[RichHandler()],
     )
-    _log = logging.getLogger("streamrip")
+    _log = logging.getLogger("loom")
     console = _get_console()
     if verbose:
         install(console=console, suppress=[click], show_locals=True,
@@ -213,12 +213,12 @@ def loom(
         install(console=console, suppress=[click, asyncio], max_frames=1)
         _log.setLevel(logging.INFO)
 
-    # Expose logger to streamrip internals (they reference it as a module global)
-    import streamrip.rip.cli as _src_cli
-    _src_cli.logger = _log
+    # Expose logger to download internals (they reference it as a module global)
+    import loom.download.rip.cli as _download_cli
+    _download_cli.logger = _log
 
-    # ── streamrip config ─────────────────────────────────────────────────────
-    from streamrip.config import (
+    # ── download config ───────────────────────────────────────────────────────
+    from loom.download.config import (
         DEFAULT_CONFIG_PATH,
         Config,
         OutdatedConfigError,
@@ -314,20 +314,20 @@ def _post_command(ctx, result, **_kwargs):
     console = _get_console()
     console.print(
         f"\n[bold cyan]Auto-importing[/bold cyan] "
-        f"[yellow]{download_folder}[/yellow] into beets library…"
+        f"[yellow]{download_folder}[/yellow] into the library…"
     )
     _run_beets("import", download_folder)
 
 
 def _run_beets(*args: str) -> None:
     """Invoke a beets sub-command programmatically."""
-    from beets.ui import _raw_main
+    from loom.library.ui import _raw_main
     try:
         _raw_main(list(args))
     except SystemExit:
         pass
     except Exception as exc:
-        _get_console().print(f"[red]beets error:[/red] {exc}")
+        _get_console().print(f"[red]library error:[/red] {exc}")
 
 
 # Small Click middleware: record which subcommand ran so _post_command can
@@ -345,13 +345,13 @@ loom.invoke = _tracking_invoke  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
-# Mount streamrip download / watch / database commands
+# Mount download / watch / database commands
 # ---------------------------------------------------------------------------
 # These commands are Click Command/Group objects registered on the `rip` group
-# in streamrip.  We re-mount them on `loom` — they rely only on ctx.obj keys
+# Re-mounted on `loom` — they rely only on ctx.obj keys
 # that the loom root group callback already sets up identically.
 
-from streamrip.rip.cli import (  # noqa: E402  (after loom group is defined)
+from loom.download.rip.cli import (  # noqa: E402  (after loom group is defined)
     url,
     file,
     search,
@@ -393,23 +393,23 @@ def config_group():
     """Manage loom configuration.
 
     \b
-    Download config (streamrip / TOML):
+    Download config (TOML):
         loom config download open
         loom config download reset
         loom config download path
 
     \b
-    Library config (beets / YAML):
+    Library config (YAML):
         loom config library open
         loom config library path
     """
 
 
-# ── Download (streamrip) config sub-group ────────────────────────────────────
+# ── Download config sub-group ────────────────────────────────────
 
 @config_group.group("download")
 def config_download():
-    """Manage the download configuration (streamrip, TOML format)."""
+    """Manage the download configuration (TOML format)."""
 
 
 @config_download.command("open")
@@ -434,7 +434,7 @@ def config_download_open(ctx, vim):
 @click.pass_context
 def config_download_reset(ctx, yes):
     """Reset the download config to defaults."""
-    from streamrip.config import set_user_defaults
+    from loom.download.config import set_user_defaults
     from rich.prompt import Confirm
 
     path = ctx.obj["config_path"]
@@ -453,31 +453,31 @@ def config_download_path(ctx):
     _get_console().print(f"Download config: [bold cyan]{ctx.obj['config_path']}")
 
 
-# ── Library (beets) config sub-group ─────────────────────────────────────────
+# ── Library config sub-group ─────────────────────────────────────────────────
 
 @config_group.group("library")
 def config_library():
-    """Manage the library configuration (beets, YAML format)."""
+    """Manage the library configuration (YAML format)."""
 
 
-def _beets_config_path() -> str:
-    """Return the path to the beets config.yaml (creating dir if needed)."""
-    import beets
-    cfg_dir = beets.config.config_dir()
+def _library_config_path() -> str:
+    """Return the path to the library config.yaml (creating dir if needed)."""
+    from loom import library as _lib
+    cfg_dir = _lib.config.config_dir()
     return os.path.join(cfg_dir, "config.yaml")
 
 
 @config_library.command("path")
 def config_library_path():
     """Print the path to the beets library config file."""
-    _get_console().print(f"Library config: [bold cyan]{_beets_config_path()}")
+    _get_console().print(f"Library config: [bold cyan]{_library_config_path()}")
 
 
 @config_library.command("open")
 @click.option("-v", "--vim", is_flag=True, help="Open in (Neo)Vim.")
 def config_library_open(vim):
     """Open the beets library config file in your editor."""
-    path = _beets_config_path()
+    path = _library_config_path()
     console = _get_console()
     # Create the file if it doesn't exist so the editor can open it
     os.makedirs(os.path.dirname(path), exist_ok=True)
