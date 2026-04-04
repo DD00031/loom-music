@@ -40,7 +40,7 @@ beetsplug.__path__ = [
             os.path.dirname(__file__),
             os.path.pardir,
             os.path.pardir,
-            "beetsplug",
+            "plugins",
         )
     )
 ]
@@ -57,7 +57,7 @@ RSRC = util.bytestring_path(
         )
     )
 )
-PLUGINPATH = os.path.join(RSRC.decode(), "beetsplug")
+PLUGINPATH = os.path.join(RSRC.decode(), "plugins")
 
 # Propagate to root logger so the test runner can capture it
 log = logging.getLogger("loom.library")
