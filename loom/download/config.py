@@ -284,27 +284,31 @@ class ConfigData:
     def from_toml(cls, toml_str: str):
         # TODO: handle the mistake where Windows people forget to escape backslash
         toml = parse(toml_str)
-        if (v := toml["misc"]["version"]) != CURRENT_CONFIG_VERSION:  # type: ignore
+        # Support unified config (all download keys nested under [download.*])
+        # as well as the legacy flat layout for backward compatibility.
+        dl = toml.get("download", toml)  # type: ignore
+
+        if (v := dl["misc"]["version"]) != CURRENT_CONFIG_VERSION:  # type: ignore
             raise OutdatedConfigError(
                 f"Need to update config from {v} to {CURRENT_CONFIG_VERSION}",
             )
 
-        downloads = DownloadsConfig(**toml["downloads"])  # type: ignore
-        qobuz = QobuzConfig(**toml["qobuz"])  # type: ignore
-        tidal = TidalConfig(**toml["tidal"])  # type: ignore
-        deezer = DeezerConfig(**toml["deezer"])  # type: ignore
-        soundcloud = SoundcloudConfig(**toml["soundcloud"])  # type: ignore
-        youtube = YoutubeConfig(**toml["youtube"])  # type: ignore
-        lastfm = LastFmConfig(**toml["lastfm"])  # type: ignore
-        spotify = SpotifyConfig(**toml["spotify"])  # type: ignore
-        artwork = ArtworkConfig(**toml["artwork"])  # type: ignore
-        filepaths = FilepathsConfig(**toml["filepaths"])  # type: ignore
-        metadata = MetadataConfig(**toml["metadata"])  # type: ignore
-        qobuz_filters = QobuzDiscographyFilterConfig(**toml["qobuz_filters"])  # type: ignore
-        cli = CliConfig(**toml["cli"])  # type: ignore
-        database = DatabaseConfig(**toml["database"])  # type: ignore
-        conversion = ConversionConfig(**toml["conversion"])  # type: ignore
-        misc = MiscConfig(**toml["misc"])  # type: ignore
+        downloads = DownloadsConfig(**dl["downloads"])  # type: ignore
+        qobuz = QobuzConfig(**dl["qobuz"])  # type: ignore
+        tidal = TidalConfig(**dl["tidal"])  # type: ignore
+        deezer = DeezerConfig(**dl["deezer"])  # type: ignore
+        soundcloud = SoundcloudConfig(**dl["soundcloud"])  # type: ignore
+        youtube = YoutubeConfig(**dl["youtube"])  # type: ignore
+        lastfm = LastFmConfig(**dl["lastfm"])  # type: ignore
+        spotify = SpotifyConfig(**dl["spotify"])  # type: ignore
+        artwork = ArtworkConfig(**dl["artwork"])  # type: ignore
+        filepaths = FilepathsConfig(**dl["filepaths"])  # type: ignore
+        metadata = MetadataConfig(**dl["metadata"])  # type: ignore
+        qobuz_filters = QobuzDiscographyFilterConfig(**dl["qobuz_filters"])  # type: ignore
+        cli = CliConfig(**dl["cli"])  # type: ignore
+        database = DatabaseConfig(**dl["database"])  # type: ignore
+        conversion = ConversionConfig(**dl["conversion"])  # type: ignore
+        misc = MiscConfig(**dl["misc"])  # type: ignore
 
         return cls(
             toml=toml,
@@ -339,21 +343,23 @@ class ConfigData:
         return self._modified
 
     def update_toml(self):
-        update_toml_section_from_config(self.toml["downloads"], self.downloads)
-        update_toml_section_from_config(self.toml["qobuz"], self.qobuz)
-        update_toml_section_from_config(self.toml["tidal"], self.tidal)
-        update_toml_section_from_config(self.toml["deezer"], self.deezer)
-        update_toml_section_from_config(self.toml["soundcloud"], self.soundcloud)
-        update_toml_section_from_config(self.toml["youtube"], self.youtube)
-        update_toml_section_from_config(self.toml["lastfm"], self.lastfm)
-        update_toml_section_from_config(self.toml["spotify"], self.spotify)
-        update_toml_section_from_config(self.toml["artwork"], self.artwork)
-        update_toml_section_from_config(self.toml["filepaths"], self.filepaths)
-        update_toml_section_from_config(self.toml["metadata"], self.metadata)
-        update_toml_section_from_config(self.toml["qobuz_filters"], self.qobuz_filters)
-        update_toml_section_from_config(self.toml["cli"], self.cli)
-        update_toml_section_from_config(self.toml["database"], self.database)
-        update_toml_section_from_config(self.toml["conversion"], self.conversion)
+        # Write back to [download.*] if using unified config, or flat if legacy.
+        t = self.toml.get("download", self.toml)  # type: ignore
+        update_toml_section_from_config(t["downloads"], self.downloads)
+        update_toml_section_from_config(t["qobuz"], self.qobuz)
+        update_toml_section_from_config(t["tidal"], self.tidal)
+        update_toml_section_from_config(t["deezer"], self.deezer)
+        update_toml_section_from_config(t["soundcloud"], self.soundcloud)
+        update_toml_section_from_config(t["youtube"], self.youtube)
+        update_toml_section_from_config(t["lastfm"], self.lastfm)
+        update_toml_section_from_config(t["spotify"], self.spotify)
+        update_toml_section_from_config(t["artwork"], self.artwork)
+        update_toml_section_from_config(t["filepaths"], self.filepaths)
+        update_toml_section_from_config(t["metadata"], self.metadata)
+        update_toml_section_from_config(t["qobuz_filters"], self.qobuz_filters)
+        update_toml_section_from_config(t["cli"], self.cli)
+        update_toml_section_from_config(t["database"], self.database)
+        update_toml_section_from_config(t["conversion"], self.conversion)
 
     def get_source(
         self,
@@ -438,10 +444,15 @@ def set_user_defaults(path: str, /):
 
 
 def toml_set_user_defaults(toml: TOMLDocument):
-    toml["downloads"]["folder"] = DEFAULT_DOWNLOADS_FOLDER  # type: ignore
-    toml["database"]["downloads_path"] = DEFAULT_DOWNLOADS_DB_PATH  # type: ignore
-    toml["database"]["failed_downloads_path"] = DEFAULT_FAILED_DOWNLOADS_DB_PATH  # type: ignore
-    toml["youtube"]["video_downloads_folder"] = DEFAULT_YOUTUBE_VIDEO_DOWNLOADS_FOLDER  # type: ignore
+    # Support both unified ([download.*]) and legacy (flat) config layouts.
+    t = toml.get("download", toml)  # type: ignore
+    t["downloads"]["folder"] = DEFAULT_DOWNLOADS_FOLDER  # type: ignore
+    t["database"]["downloads_path"] = DEFAULT_DOWNLOADS_DB_PATH  # type: ignore
+    t["database"]["failed_downloads_path"] = DEFAULT_FAILED_DOWNLOADS_DB_PATH  # type: ignore
+    t["youtube"]["video_downloads_folder"] = DEFAULT_YOUTUBE_VIDEO_DOWNLOADS_FOLDER  # type: ignore
+    # Set library DB path in the [library] section when present.
+    if "library" in toml:
+        toml["library"]["library"] = os.path.join(APP_DIR, "library.db")  # type: ignore
 
 
 def _get_dict_keys_r(d: dict) -> set[tuple]:

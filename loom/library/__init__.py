@@ -13,6 +13,7 @@
 # included in all copies or substantial portions of the Software.
 
 
+import os
 from sys import stderr
 
 import confuse
@@ -27,26 +28,54 @@ def __getattr__(name: str):
     """Handle deprecated imports."""
     return deprecate_imports(
         __name__,
-        {"art": "beetsplug._utils", "vfs": "beetsplug._utils"},
+        {"art": "loom.library.plugins._utils", "vfs": "loom.library.plugins._utils"},
         name,
     )
 
 
 class IncludeLazyConfig(confuse.LazyConfig):
-    """A version of Confuse's LazyConfig that also merges in data from
-    YAML files specified in an `include` setting.
+    """Confuse LazyConfig extended for loom:
+
+    1. Reads the ``[library]`` section from the unified loom TOML config and
+       overlays it on top of the built-in defaults.  This lets users configure
+       the library manager (directory, plugins, import settings, paths…) from
+       the same ``config.toml`` file that controls downloads.
+
+    2. Merges any additional YAML files listed under an ``include`` key
+       (original beets behaviour, kept for compatibility).
     """
 
     def read(self, user: bool = True, defaults: bool = True) -> None:
+        # 1. Read built-in defaults (config_default.yaml) and any legacy
+        #    ~/.config/loom/config.yaml the user may have.
         super().read(user, defaults)
 
+        # 2. Overlay [library] section from the unified TOML config.
+        #    self.set() inserts at the highest priority, so TOML wins over the
+        #    legacy YAML and the built-in defaults.
+        if user:
+            try:
+                import tomlkit
+                from loom.download.config import DEFAULT_CONFIG_PATH
+
+                if os.path.isfile(DEFAULT_CONFIG_PATH):
+                    with open(DEFAULT_CONFIG_PATH, encoding="utf-8") as fh:
+                        toml_data = tomlkit.load(fh)
+                    library_section = toml_data.get("library", {})
+                    if library_section:
+                        self.set(dict(library_section))
+            except Exception:
+                # Never crash the library subsystem over a config read error.
+                pass
+
+        # 3. Process any `include:` paths listed in the config (original behaviour).
         try:
             for view in self["include"].sequence():
                 self.set_file(view.as_filename())
         except confuse.NotFoundError:
             pass
         except confuse.ConfigReadError as err:
-            stderr.write(f"configuration `import` failed: {err.reason}")
+            stderr.write(f"configuration `include` failed: {err.reason}")
 
 
 config = IncludeLazyConfig("loom", __name__)

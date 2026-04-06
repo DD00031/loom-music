@@ -23,9 +23,14 @@ Library management (beets):
   loom stats                       — library statistics
   loom fields                      — list available metadata fields
 
+Setup / migration:
+  loom setup (= loom start = loom hello) — migrate from streamrip / beets
+  loom setup cleanup               — remove old packages after migration
+
 Configuration:
-  loom config download …           — manage the download config
-  loom config library …            — manage the library config
+  loom config open                 — open the unified config.toml in your editor
+  loom config reset                — reset config to defaults
+  loom config path                 — print the path to config.toml
 
 Global flags:
   -q / --quality   1,3             — download quality level(s)
@@ -248,7 +253,7 @@ def loom(
     except Exception as e:
         console.print(
             f"[red]Error loading config:[/red] {e}\n"
-            "Run [bold]loom config download reset[/bold] to restore defaults."
+            "Run [bold]loom config reset[/bold] to restore defaults."
         )
         ctx.obj["config"] = None
         return
@@ -361,6 +366,7 @@ from loom.download.rip.cli import (  # noqa: E402  (after loom group is defined)
     watch,
     database,
 )
+from loom.setup_wizard import setup_group  # noqa: E402
 
 loom.add_command(url)
 loom.add_command(file)
@@ -370,6 +376,11 @@ loom.add_command(lastfm)
 loom.add_command(spotify)
 loom.add_command(watch)
 loom.add_command(database)
+
+# Setup wizard — three aliases for discoverability
+loom.add_command(setup_group, name="setup")
+loom.add_command(setup_group, name="start")
+loom.add_command(setup_group, name="hello")
 
 # Patch example text in shared command help strings: replace "rip " → "loom ".
 # These commands are shared objects; updating them once applies everywhere.
@@ -390,33 +401,21 @@ for _cmd in (url, file, search, id_cmd, lastfm, spotify, watch, database):
 
 @loom.group("config")
 def config_group():
-    """Manage loom configuration.
+    """Manage loom configuration (~/.config/loom/config.toml).
 
     \b
-    Download config (TOML):
-        loom config download open
-        loom config download reset
-        loom config download path
-
-    \b
-    Library config (YAML):
-        loom config library open
-        loom config library path
+    All settings — both download and library — live in one file:
+        loom config open    # edit in your default editor
+        loom config reset   # restore defaults (keeps credentials)
+        loom config path    # print the file path
     """
 
 
-# ── Download config sub-group ────────────────────────────────────
-
-@config_group.group("download")
-def config_download():
-    """Manage the download configuration (TOML format)."""
-
-
-@config_download.command("open")
+@config_group.command("open")
 @click.option("-v", "--vim", is_flag=True, help="Open in (Neo)Vim.")
 @click.pass_context
-def config_download_open(ctx, vim):
-    """Open the download config file in your editor."""
+def config_open(ctx, vim):
+    """Open the config file in your editor."""
     path = ctx.obj["config_path"]
     console = _get_console()
     console.print(f"Opening [bold cyan]{path}[/bold cyan]")
@@ -429,11 +428,11 @@ def config_download_open(ctx, vim):
     click.launch(path)
 
 
-@config_download.command("reset")
+@config_group.command("reset")
 @click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt.")
 @click.pass_context
-def config_download_reset(ctx, yes):
-    """Reset the download config to defaults."""
+def config_reset(ctx, yes):
+    """Reset config to defaults (preserves credentials)."""
     from loom.download.config import set_user_defaults
     from rich.prompt import Confirm
 
@@ -446,52 +445,11 @@ def config_download_reset(ctx, yes):
     _get_console().print(f"[green]Reset[/green] [bold cyan]{path}[/bold cyan]")
 
 
-@config_download.command("path")
+@config_group.command("path")
 @click.pass_context
-def config_download_path(ctx):
-    """Print the path to the download config file."""
-    _get_console().print(f"Download config: [bold cyan]{ctx.obj['config_path']}")
-
-
-# ── Library config sub-group ─────────────────────────────────────────────────
-
-@config_group.group("library")
-def config_library():
-    """Manage the library configuration (YAML format)."""
-
-
-def _library_config_path() -> str:
-    """Return the path to the library config.yaml (creating dir if needed)."""
-    from loom import library as _lib
-    cfg_dir = _lib.config.config_dir()
-    return os.path.join(cfg_dir, "config.yaml")
-
-
-@config_library.command("path")
-def config_library_path():
-    """Print the path to the beets library config file."""
-    _get_console().print(f"Library config: [bold cyan]{_library_config_path()}")
-
-
-@config_library.command("open")
-@click.option("-v", "--vim", is_flag=True, help="Open in (Neo)Vim.")
-def config_library_open(vim):
-    """Open the beets library config file in your editor."""
-    path = _library_config_path()
-    console = _get_console()
-    # Create the file if it doesn't exist so the editor can open it
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    if not os.path.exists(path):
-        with open(path, "w") as fh:
-            fh.write("# beets configuration\n# https://beets.readthedocs.io/en/stable/reference/config.html\n")
-    console.print(f"Opening [bold cyan]{path}[/bold cyan]")
-    if vim:
-        editor = shutil.which("nvim") or shutil.which("vim")
-        if editor:
-            subprocess.run([editor, path])
-            return
-        console.print("[yellow]nvim/vim not found — using system default.")
-    click.launch(path)
+def config_path(ctx):
+    """Print the path to the config file."""
+    _get_console().print(f"Config: [bold cyan]{ctx.obj['config_path']}")
 
 
 # ---------------------------------------------------------------------------
